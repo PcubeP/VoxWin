@@ -1,0 +1,16 @@
+# Gradle / Android build artifacts
+.gradle/
+build/
+app/build/
+
+# Local SDK location (machine-specific)
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Keystores
+*.jks
+*.keystore

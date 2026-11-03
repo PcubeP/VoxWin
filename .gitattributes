@@ -1,0 +1,18 @@
+# Default: normalize to LF in the repo, checkout as-is on each platform.
+* text=auto eol=lf
+
+# Shell scripts must always be LF (they run on Linux CI).
+*.sh text eol=lf
+gradlew text eol=lf
+
+# Windows batch files stay CRLF.
+*.bat text eol=crlf
+
+# Binary — no line-ending conversion.
+*.jar binary
+*.apk binary
+*.aab binary
+*.png binary
+*.jpg binary
+*.keystore binary
+*.jks binary

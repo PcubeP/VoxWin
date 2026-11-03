@@ -1,0 +1,30 @@
+# ---- Rust (daemon) ----
+target/
+**/*.rs.bk
+Cargo.lock.orig
+
+# ---- Android (app) ----
+build/
+.gradle/
+local.properties
+captures/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.keystore
+*.jks
+
+# ---- IDE / editors ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+
+# ---- OS cruft ----
+.DS_Store
+Thumbs.db
+desktop.ini

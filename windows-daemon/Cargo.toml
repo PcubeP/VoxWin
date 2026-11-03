@@ -1,0 +1,30 @@
+[package]
+name = "voxwin-daemon"
+version = "0.1.0"
+edition = "2021"
+description = "voxwin Windows-side daemon: receives JSON voice commands over a LAN WebSocket and drives Windows input."
+
+[dependencies]
+# Async runtime + WebSocket server stack
+tokio = { version = "1.40", features = ["full"] }
+tokio-tungstenite = "0.23"
+futures-util = "0.3"
+
+# JSON wire protocol
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Synthetic keyboard / mouse / media input
+enigo = "0.2"
+
+# Figure out which LAN IP to print on startup
+local-ip-address = "0.6"
+
+# NOTE: lock / launch are done via std::process::Command (rundll32, notepad, ...),
+# so the heavy `windows` crate is intentionally not pulled in. Volume/media keys
+# go through enigo's Key::Other(vk) using Windows virtual-key codes.
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true

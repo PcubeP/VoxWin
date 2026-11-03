@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The voxwin daemon speaks plain ws:// on the local network, and the user types
+  in whatever LAN IP their PC happens to have, so cleartext traffic has to be
+  permitted for arbitrary hosts. Android's network-security-config cannot
+  express CIDR ranges (a <domain> is an exact host/suffix, not a subnet), so
+  there is no way to scope this to "private ranges only" here — we permit
+  cleartext globally and rely on the app only ever being pointed at a LAN IP.
+
+  This is a deliberate trade-off for a LAN-only hobby tool; see the Security
+  section of the top-level README. Do NOT ship an app with this posture to a
+  store listing that handles anything sensitive.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

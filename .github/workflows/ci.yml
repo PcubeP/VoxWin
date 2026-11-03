@@ -1,0 +1,91 @@
+name: CI
+
+# Builds both halves of voxwin on clean, hosted runners:
+#   - windows-daemon: Rust, compiled + tested on a real Windows (MSVC) runner
+#   - android:        Kotlin/Compose app, unit-tested + assembled on Linux
+#
+# (Local dev machines under enterprise Defender may block running freshly
+# compiled native binaries; these hosted runners are the authoritative build
+# signal for the Rust side.)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows-daemon:
+    name: Rust daemon (Windows / MSVC)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows-daemon
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable, MSVC)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows-daemon
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy (non-blocking)
+        run: cargo clippy --release --all-targets
+
+      - name: Build (release)
+        run: cargo build --release
+
+      - name: Test
+        run: cargo test --release
+
+      - name: Upload daemon binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxwin-daemon-exe
+          path: windows-daemon/target/release/voxwin-daemon.exe
+          if-no-files-found: error
+
+  android:
+    name: Android app (unit tests + APK)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon test
+
+      - name: Assemble debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxwin-app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
