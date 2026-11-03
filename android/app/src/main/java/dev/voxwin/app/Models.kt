@@ -6,6 +6,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
+/** Which transport layer is active. */
+enum class TransportMode { LAN, BLUETOOTH }
+
 /**
  * Wire-protocol data models shared between the Android client and the Rust
  * Windows daemon. See the protocol spec: JSON over a single WebSocket text

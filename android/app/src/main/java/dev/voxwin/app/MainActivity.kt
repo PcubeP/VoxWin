@@ -1,8 +1,12 @@
 package dev.voxwin.app
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -36,15 +40,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +61,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -110,7 +122,8 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** A log entry, classified so the UI can colour it. */
+// ── Log model ────────────────────────────────────────────────────────────────
+
 private enum class LogKind { SENT, ACK, ERROR, INFO }
 
 private data class LogLine(val time: String, val text: String, val kind: LogKind)
@@ -128,25 +141,46 @@ private val SUGGESTIONS = listOf(
     "open notepad", "type hello team", "press control c", "lock the computer",
 )
 
+// ── Root composable ───────────────────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
 
-    // Persisted connection settings.
     val prefs = remember { context.getSharedPreferences("voxwin", Context.MODE_PRIVATE) }
+
+    // Transport mode
+    var mode by remember { mutableStateOf(TransportMode.values()[prefs.getInt("mode", 0)]) }
+
+    // LAN / Internet fields
     var host by remember { mutableStateOf(prefs.getString("host", "192.168.0.") ?: "192.168.0.") }
     var port by remember { mutableStateOf(prefs.getString("port", "8787") ?: "8787") }
     var token by remember { mutableStateOf(prefs.getString("token", "voxwin-dev") ?: "voxwin-dev") }
+    var tls by remember { mutableStateOf(prefs.getBoolean("tls", false)) }
+
+    // Bluetooth fields
+    var btToken by remember { mutableStateOf(prefs.getString("bt_token", "voxwin-dev") ?: "voxwin-dev") }
+    var selectedDevice by remember { mutableStateOf<BluetoothDevice?>(null) }
+    var pairedDevices by remember { mutableStateOf<List<BluetoothDevice>>(emptyList()) }
 
     var transcript by remember { mutableStateOf("") }
     var hint by remember { mutableStateOf("") }
     var listening by remember { mutableStateOf(false) }
+
     var micPermission by remember {
         mutableStateOf(
             context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    var btPermission by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) ==
+                    PackageManager.PERMISSION_GRANTED
+            else true
         )
     }
 
@@ -164,16 +198,29 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
         true
     }
 
-    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
+    val micPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
     ) { granted -> micPermission = granted }
+
+    val btPermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        btPermission = granted
+        if (granted) pairedDevices = loadPairedDevices(context)
+    }
+
+    // Load paired devices whenever BT mode is active and we have permission.
+    LaunchedEffect(mode, btPermission) {
+        if (mode == TransportMode.BLUETOOTH && btPermission) {
+            pairedDevices = loadPairedDevices(context)
+        }
+    }
 
     val speech = remember {
         SpeechController(
             context = context,
             callbacks = object : SpeechController.Callbacks {
                 override fun onPartial(text: String) = activity.runOnUiThread { transcript = text }
-
                 override fun onResult(text: String) = activity.runOnUiThread {
                     transcript = text
                     val command = CommandParser.parse(text)
@@ -186,9 +233,7 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
                         client.send(command)
                     }
                 }
-
                 override fun onError(message: String) = activity.runOnUiThread { hint = message }
-
                 override fun onListeningChanged(isListening: Boolean) = activity.runOnUiThread {
                     listening = isListening
                     if (isListening) hint = ""
@@ -198,12 +243,28 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
     }
 
     fun ensureMicThen(block: () -> Unit) {
-        if (micPermission) block() else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        if (micPermission) block()
+        else micPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     fun doConnect() {
-        prefs.edit().putString("host", host).putString("port", port).putString("token", token).apply()
-        client.connect(host.trim(), port.toIntOrNull() ?: 8787, token.trim())
+        when (mode) {
+            TransportMode.LAN -> {
+                prefs.edit()
+                    .putString("host", host).putString("port", port)
+                    .putString("token", token).putBoolean("tls", tls)
+                    .putInt("mode", mode.ordinal).apply()
+                client.connect(host.trim(), port.toIntOrNull() ?: 8787, token.trim(), tls)
+            }
+            TransportMode.BLUETOOTH -> {
+                val device = selectedDevice ?: run {
+                    log("No Bluetooth device selected.")
+                    return
+                }
+                prefs.edit().putString("bt_token", btToken).putInt("mode", mode.ordinal).apply()
+                client.connectBluetooth(device, btToken.trim())
+            }
+        }
     }
 
     Scaffold(
@@ -231,9 +292,20 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             ConnectionCard(
+                mode = mode, onMode = { mode = it },
                 host = host, onHost = { host = it },
                 port = port, onPort = { port = it.filter(Char::isDigit) },
                 token = token, onToken = { token = it },
+                tls = tls, onTls = { tls = it },
+                btToken = btToken, onBtToken = { btToken = it },
+                pairedDevices = pairedDevices,
+                selectedDevice = selectedDevice, onDevice = { selectedDevice = it },
+                btPermission = btPermission,
+                onRequestBtPermission = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                        btPermLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                    else pairedDevices = loadPairedDevices(context)
+                },
                 state = connState,
                 onConnect = { doConnect() },
                 onDisconnect = { client.disconnect() },
@@ -272,6 +344,8 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
     }
 }
 
+// ── Status chip ───────────────────────────────────────────────────────────────
+
 @Composable
 private fun StatusChip(state: ConnectionState) {
     val (label, color) = when (state) {
@@ -292,40 +366,122 @@ private fun StatusChip(state: ConnectionState) {
     }
 }
 
+// ── Connection card ───────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConnectionCard(
+    mode: TransportMode, onMode: (TransportMode) -> Unit,
     host: String, onHost: (String) -> Unit,
     port: String, onPort: (String) -> Unit,
     token: String, onToken: (String) -> Unit,
+    tls: Boolean, onTls: (Boolean) -> Unit,
+    btToken: String, onBtToken: (String) -> Unit,
+    pairedDevices: List<BluetoothDevice>,
+    selectedDevice: BluetoothDevice?, onDevice: (BluetoothDevice) -> Unit,
+    btPermission: Boolean, onRequestBtPermission: () -> Unit,
     state: ConnectionState,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
+    onConnect: () -> Unit, onDisconnect: () -> Unit,
 ) {
     val connected = state == ConnectionState.CONNECTED
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        ),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Your PC", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = host, onValueChange = onHost,
-                    label = { Text("Host / IP") }, singleLine = true,
-                    enabled = !connected, modifier = Modifier.weight(2f),
+
+            // ── Transport mode tabs ──────────────────────────────────────────
+            TabRow(selectedTabIndex = mode.ordinal) {
+                Tab(
+                    selected = mode == TransportMode.LAN,
+                    onClick = { if (!connected) onMode(TransportMode.LAN) },
+                    icon = { Icon(Icons.Filled.Wifi, contentDescription = null, Modifier.size(18.dp)) },
+                    text = { Text("LAN / Internet") },
                 )
-                OutlinedTextField(
-                    value = port, onValueChange = onPort,
-                    label = { Text("Port") }, singleLine = true, enabled = !connected,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                    modifier = Modifier.weight(1f),
+                Tab(
+                    selected = mode == TransportMode.BLUETOOTH,
+                    onClick = { if (!connected) onMode(TransportMode.BLUETOOTH) },
+                    icon = { Icon(Icons.Filled.Bluetooth, contentDescription = null, Modifier.size(18.dp)) },
+                    text = { Text("Bluetooth") },
                 )
             }
-            OutlinedTextField(
-                value = token, onValueChange = onToken,
-                label = { Text("Token") }, singleLine = true, enabled = !connected,
-                modifier = Modifier.fillMaxWidth(),
-            )
+
+            Spacer(Modifier.height(2.dp))
+
+            when (mode) {
+
+                // ── LAN / Internet ───────────────────────────────────────────
+                TransportMode.LAN -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = host, onValueChange = onHost,
+                            label = { Text("Host / IP") }, singleLine = true,
+                            enabled = !connected, modifier = Modifier.weight(2f),
+                        )
+                        OutlinedTextField(
+                            value = port, onValueChange = onPort,
+                            label = { Text("Port") }, singleLine = true, enabled = !connected,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done,
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    OutlinedTextField(
+                        value = token, onValueChange = onToken,
+                        label = { Text("Token") }, singleLine = true, enabled = !connected,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // TLS toggle
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Secure (wss://)", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "For internet use; daemon must have VOXWIN_TLS=1",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = tls, onCheckedChange = { if (!connected) onTls(it) }, enabled = !connected)
+                    }
+                }
+
+                // ── Bluetooth ────────────────────────────────────────────────
+                TransportMode.BLUETOOTH -> {
+                    if (!btPermission) {
+                        FilledTonalButton(
+                            onClick = onRequestBtPermission,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Grant Bluetooth Permission") }
+                    } else if (pairedDevices.isEmpty()) {
+                        Text(
+                            "No paired Bluetooth devices found. Pair your PC in Android Settings first.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        DevicePicker(
+                            devices = pairedDevices,
+                            selected = selectedDevice,
+                            onSelect = onDevice,
+                            enabled = !connected,
+                        )
+                    }
+                    OutlinedTextField(
+                        value = btToken, onValueChange = onBtToken,
+                        label = { Text("Token") }, singleLine = true, enabled = !connected,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
             FilledTonalButton(
                 onClick = { if (connected) onDisconnect() else onConnect() },
                 modifier = Modifier.fillMaxWidth(),
@@ -333,6 +489,55 @@ private fun ConnectionCard(
         }
     }
 }
+
+// ── Bluetooth device picker ───────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DevicePicker(
+    devices: List<BluetoothDevice>,
+    selected: BluetoothDevice?,
+    onSelect: (BluetoothDevice) -> Unit,
+    enabled: Boolean,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = selected?.name ?: selected?.address ?: "Select paired device"
+
+    ExposedDropdownMenuBox(
+        expanded = expanded && enabled,
+        onExpandedChange = { if (enabled) expanded = it },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = label,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Bluetooth device") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(),
+            enabled = enabled,
+        )
+        ExposedDropdownMenu(
+            expanded = expanded && enabled,
+            onDismissRequest = { expanded = false },
+        ) {
+            devices.forEach { device ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(device.name ?: "Unknown", style = MaterialTheme.typography.bodyMedium)
+                            Text(device.address, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    onClick = { onSelect(device); expanded = false },
+                )
+            }
+        }
+    }
+}
+
+// ── Mic panel ─────────────────────────────────────────────────────────────────
 
 @Composable
 private fun MicPanel(
@@ -405,13 +610,16 @@ private fun MicPanel(
         Text(
             text = transcript.ifEmpty { "Say a command…" },
             style = MaterialTheme.typography.titleMedium,
-            color = if (transcript.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onBackground,
+            color = if (transcript.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.onBackground,
         )
         AnimatedVisibility(visible = hint.isNotEmpty()) {
             Text(hint, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
+
+// ── Suggestion chips ──────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -431,6 +639,8 @@ private fun SuggestionRow(enabled: Boolean, onPick: (String) -> Unit) {
     }
 }
 
+// ── Activity log ──────────────────────────────────────────────────────────────
+
 @Composable
 private fun ActivityLog(
     lines: List<LogLine>,
@@ -438,7 +648,6 @@ private fun ActivityLog(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    // Auto-scroll to the newest line as entries arrive.
     LaunchedEffect(lines.size) {
         if (lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1)
     }
@@ -490,3 +699,14 @@ private fun ActivityLog(
         }
     }
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+@Suppress("MissingPermission")
+private fun loadPairedDevices(context: Context): List<BluetoothDevice> =
+    try {
+        val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        bm?.adapter?.bondedDevices?.toList() ?: emptyList()
+    } catch (_: Exception) {
+        emptyList()
+    }

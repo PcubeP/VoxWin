@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Audio (speech recognition) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Network (WebSocket transport) -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Bluetooth — classic RFCOMM (API ≤ 30: normal permission, no runtime request needed) -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <!-- Bluetooth — connect to paired devices (API 31+: dangerous, runtime request required) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- The app does not require Bluetooth hardware; it is an optional transport -->
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
 
     <application
         android:allowBackup="true"

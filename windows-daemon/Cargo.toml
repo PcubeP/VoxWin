@@ -1,13 +1,13 @@
 [package]
 name = "voxwin-daemon"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "voxwin Windows-side daemon: receives JSON voice commands over a LAN WebSocket and drives Windows input."
+description = "voxwin Windows daemon — voice commands over WebSocket (plain/TLS) or Bluetooth RFCOMM."
 
 [dependencies]
 # Async runtime + WebSocket server stack
 tokio = { version = "1.40", features = ["full"] }
-tokio-tungstenite = "0.23"
+tokio-tungstenite = { version = "0.23", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 
 # JSON wire protocol
@@ -20,9 +20,18 @@ enigo = "0.2"
 # Figure out which LAN IP to print on startup
 local-ip-address = "0.6"
 
-# NOTE: lock / launch are done via std::process::Command (rundll32, notepad, ...),
-# so the heavy `windows` crate is intentionally not pulled in. Volume/media keys
-# go through enigo's Key::Other(vk) using Windows virtual-key codes.
+# TLS (wss://) — self-signed cert generated at startup
+tokio-rustls = "0.26"
+rustls = "0.23"
+rcgen = "0.13"
+
+[target.'cfg(windows)'.dependencies]
+# Windows Bluetooth RFCOMM socket + SDP registration
+windows = { version = "0.58", features = [
+    "Win32_Devices_Bluetooth",
+    "Win32_Foundation",
+    "Win32_Networking_WinSock",
+] }
 
 [profile.release]
 opt-level = "z"
