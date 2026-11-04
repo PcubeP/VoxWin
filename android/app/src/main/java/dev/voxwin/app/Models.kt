@@ -29,6 +29,14 @@ object Actions {
     const val KEY = "key"
     const val SCROLL = "scroll"
     const val LOCK = "lock"
+    // Touchpad / remote mouse
+    const val MOUSE_MOVE_REL = "mouse_move_rel"
+    const val MOUSE_MOVE_ABS = "mouse_move_abs"
+    const val MOUSE_CLICK    = "mouse_click"
+    const val MOUSE_DOUBLE   = "mouse_double"
+    const val MOUSE_DOWN     = "mouse_down"
+    const val MOUSE_UP       = "mouse_up"
+    const val MOUSE_SCROLL   = "mouse_scroll"
 }
 
 /**

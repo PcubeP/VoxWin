@@ -7,7 +7,7 @@
 
 use std::process::Command as Proc;
 
-use enigo::{Axis, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 
 use crate::protocol::Args;
 
@@ -68,6 +68,25 @@ pub fn dispatch(action: &str, args: &Args) -> Result<String, String> {
         }
 
         "lock" => lock(),
+
+        "mouse_move_rel" => {
+            let x = args.x.ok_or("mouse_move_rel: missing 'x'")?;
+            let y = args.y.ok_or("mouse_move_rel: missing 'y'")?;
+            mouse_move(x, y, Coordinate::Rel)
+        }
+        "mouse_move_abs" => {
+            let x = args.x.ok_or("mouse_move_abs: missing 'x'")?;
+            let y = args.y.ok_or("mouse_move_abs: missing 'y'")?;
+            mouse_move(x, y, Coordinate::Abs)
+        }
+        "mouse_click"  => mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Click),
+        "mouse_double" => {
+            mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Click)?;
+            mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Click)
+        }
+        "mouse_down" => mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Press),
+        "mouse_up"   => mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Release),
+        "mouse_scroll" => mouse_scroll_xy(args.x.unwrap_or(0), args.y.unwrap_or(0)),
 
         other => Err(format!("unknown action '{other}'")),
     }
@@ -217,4 +236,36 @@ fn lock() -> Result<String, String> {
         .spawn()
         .map_err(|e| format!("lock: failed: {e}"))?;
     Ok("locked".into())
+}
+
+fn mouse_move(x: i32, y: i32, coord: Coordinate) -> Result<String, String> {
+    let mut e = enigo()?;
+    e.move_mouse(x, y, coord)
+        .map_err(|err| format!("mouse_move failed: {err}"))?;
+    Ok(format!("mouse moved {x},{y}"))
+}
+
+fn mouse_btn(btn: &str, dir: Direction) -> Result<String, String> {
+    let button = match btn {
+        "right"  => Button::Right,
+        "middle" => Button::Middle,
+        _        => Button::Left,
+    };
+    let mut e = enigo()?;
+    e.button(button, dir)
+        .map_err(|err| format!("mouse_btn failed: {err}"))?;
+    Ok(format!("mouse {btn} {dir:?}"))
+}
+
+fn mouse_scroll_xy(x: i32, y: i32) -> Result<String, String> {
+    let mut e = enigo()?;
+    if y != 0 {
+        e.scroll(y, Axis::Vertical)
+            .map_err(|err| format!("scroll_y failed: {err}"))?;
+    }
+    if x != 0 {
+        e.scroll(x, Axis::Horizontal)
+            .map_err(|err| format!("scroll_x failed: {err}"))?;
+    }
+    Ok(format!("scrolled x={x} y={y}"))
 }

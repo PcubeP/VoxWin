@@ -40,6 +40,12 @@ pub struct Args {
     pub direction: Option<String>,
     /// "scroll": number of scroll steps (defaults to 3 when omitted).
     pub amount: Option<i32>,
+    /// mouse_move_rel / mouse_move_abs / mouse_scroll: x delta or absolute x.
+    pub x: Option<i32>,
+    /// mouse_move_rel / mouse_move_abs / mouse_scroll: y delta or absolute y.
+    pub y: Option<i32>,
+    /// mouse_click / mouse_double / mouse_down / mouse_up: "left" | "right" | "middle".
+    pub button: Option<String>,
 }
 
 /// A frame the daemon sends back to the Android app.

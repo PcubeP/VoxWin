@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -58,6 +59,8 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -168,6 +171,7 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
     var transcript by remember { mutableStateOf("") }
     var hint by remember { mutableStateOf("") }
     var listening by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(0) }
 
     var micPermission by remember {
         mutableStateOf(
@@ -187,6 +191,8 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
     val logLines = remember { mutableStateListOf<LogLine>() }
     val timeFmt = remember { SimpleDateFormat("HH:mm:ss", Locale.US) }
     fun log(line: String) {
+        // Suppress high-frequency mouse-move events so the voice log stays readable.
+        if (line.startsWith("->") && "\"mouse_move" in line) return
         logLines.add(LogLine(timeFmt.format(Date()), line, classify(line)))
         if (logLines.size > 200) logLines.removeAt(0)
     }
@@ -283,63 +289,85 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
                 ),
             )
         },
-    ) { inner ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(inner)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            ConnectionCard(
-                mode = mode, onMode = { mode = it },
-                host = host, onHost = { host = it },
-                port = port, onPort = { port = it.filter(Char::isDigit) },
-                token = token, onToken = { token = it },
-                tls = tls, onTls = { tls = it },
-                btToken = btToken, onBtToken = { btToken = it },
-                pairedDevices = pairedDevices,
-                selectedDevice = selectedDevice, onDevice = { selectedDevice = it },
-                btPermission = btPermission,
-                onRequestBtPermission = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                        btPermLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
-                    else pairedDevices = loadPairedDevices(context)
-                },
-                state = connState,
-                onConnect = { doConnect() },
-                onDisconnect = { client.disconnect() },
-            )
-
-            MicPanel(
-                listening = listening,
-                connected = connState == ConnectionState.CONNECTED,
-                transcript = transcript,
-                hint = hint,
-                onStart = {
-                    ensureMicThen {
-                        if (connState != ConnectionState.CONNECTED) doConnect()
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        speech.start()
-                    }
-                },
-                onStop = { speech.stop() },
-            )
-
-            SuggestionRow(enabled = connState == ConnectionState.CONNECTED) { phrase ->
-                CommandParser.parse(phrase)?.let { cmd ->
-                    transcript = phrase
-                    hint = ""
-                    log("tapped \"$phrase\" -> ${cmd.action}")
-                    client.send(cmd)
-                }
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    icon = { Icon(Icons.Filled.Mic, contentDescription = null) },
+                    label = { Text("Voice") },
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    icon = { Icon(Icons.Filled.Mouse, contentDescription = null) },
+                    label = { Text("Touchpad") },
+                )
             }
-
-            ActivityLog(
-                lines = logLines,
-                onClear = { logLines.clear() },
-                modifier = Modifier.weight(1f),
+        },
+    ) { inner ->
+        when (selectedTab) {
+            1 -> TouchpadScreen(
+                client = client,
+                modifier = Modifier.padding(inner),
             )
+            else -> Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(inner)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                ConnectionCard(
+                    mode = mode, onMode = { mode = it },
+                    host = host, onHost = { host = it },
+                    port = port, onPort = { port = it.filter(Char::isDigit) },
+                    token = token, onToken = { token = it },
+                    tls = tls, onTls = { tls = it },
+                    btToken = btToken, onBtToken = { btToken = it },
+                    pairedDevices = pairedDevices,
+                    selectedDevice = selectedDevice, onDevice = { selectedDevice = it },
+                    btPermission = btPermission,
+                    onRequestBtPermission = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                            btPermLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                        else pairedDevices = loadPairedDevices(context)
+                    },
+                    state = connState,
+                    onConnect = { doConnect() },
+                    onDisconnect = { client.disconnect() },
+                )
+
+                MicPanel(
+                    listening = listening,
+                    connected = connState == ConnectionState.CONNECTED,
+                    transcript = transcript,
+                    hint = hint,
+                    onStart = {
+                        ensureMicThen {
+                            if (connState != ConnectionState.CONNECTED) doConnect()
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            speech.start()
+                        }
+                    },
+                    onStop = { speech.stop() },
+                )
+
+                SuggestionRow(enabled = connState == ConnectionState.CONNECTED) { phrase ->
+                    CommandParser.parse(phrase)?.let { cmd ->
+                        transcript = phrase
+                        hint = ""
+                        log("tapped \"$phrase\" -> ${cmd.action}")
+                        client.send(cmd)
+                    }
+                }
+
+                ActivityLog(
+                    lines = logLines,
+                    onClear = { logLines.clear() },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
