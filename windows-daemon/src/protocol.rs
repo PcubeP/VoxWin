@@ -46,6 +46,8 @@ pub struct Args {
     pub y: Option<i32>,
     /// mouse_click / mouse_double / mouse_down / mouse_up: "left" | "right" | "middle".
     pub button: Option<String>,
+    /// llm_query: natural-language query to send to Ollama.
+    pub query: Option<String>,
 }
 
 /// A frame the daemon sends back to the Android app.

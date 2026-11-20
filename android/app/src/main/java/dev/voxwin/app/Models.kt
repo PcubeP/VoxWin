@@ -37,6 +37,8 @@ object Actions {
     const val MOUSE_DOWN     = "mouse_down"
     const val MOUSE_UP       = "mouse_up"
     const val MOUSE_SCROLL   = "mouse_scroll"
+    // AI / LLM
+    const val LLM_QUERY = "llm_query"
 }
 
 /**

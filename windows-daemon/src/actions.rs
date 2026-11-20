@@ -88,6 +88,14 @@ pub fn dispatch(action: &str, args: &Args) -> Result<String, String> {
         "mouse_up"   => mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Release),
         "mouse_scroll" => mouse_scroll_xy(args.x.unwrap_or(0), args.y.unwrap_or(0)),
 
+        "llm_query" => {
+            let query = args
+                .query
+                .as_deref()
+                .ok_or("llm_query: missing 'query' argument")?;
+            llm_query(query)
+        }
+
         other => Err(format!("unknown action '{other}'")),
     }
 }
@@ -268,4 +276,77 @@ fn mouse_scroll_xy(x: i32, y: i32) -> Result<String, String> {
             .map_err(|err| format!("scroll_x failed: {err}"))?;
     }
     Ok(format!("scrolled x={x} y={y}"))
+}
+
+// System prompt sent with every Ollama request. Concise to fit small-context models.
+const LLM_SYSTEM: &str = "\
+You are a Windows PC voice assistant. Convert the user's natural language into a JSON \
+action array. Available actions:\n\
+  volume_up, volume_down, mute\n\
+  media_play_pause, media_next, media_prev\n\
+  launch        {\"app\": \"notepad\"|\"calculator\"|\"browser\"|\"terminal\"|\"explorer\"}\n\
+  type_text     {\"text\": \"...\"}\n\
+  key           {\"combo\": \"ctrl+c\"|\"win+d\"|\"alt+f4\"|...}\n\
+  scroll        {\"direction\": \"up\"|\"down\", \"amount\": 3}\n\
+  lock\n\
+Respond ONLY with a valid JSON array of action objects. No explanation, no markdown fences.\n\
+Example: [{\"action\":\"launch\",\"args\":{\"app\":\"notepad\"}},{\"action\":\"type_text\",\"args\":{\"text\":\"hello\"}}]";
+
+fn llm_query(query: &str) -> Result<String, String> {
+    let url = std::env::var("VOXWIN_OLLAMA_URL")
+        .unwrap_or_else(|_| "http://localhost:11434/api/generate".to_string());
+    let model = std::env::var("VOXWIN_OLLAMA_MODEL")
+        .unwrap_or_else(|_| "llama3.2".to_string());
+
+    let body = serde_json::json!({
+        "model": model,
+        "system": LLM_SYSTEM,
+        "prompt": query,
+        "stream": false,
+    });
+
+    let resp: serde_json::Value = ureq::post(&url)
+        .timeout(std::time::Duration::from_secs(30))
+        .send_json(body)
+        .map_err(|e| format!("llm_query: Ollama request failed: {e}"))?
+        .into_json()
+        .map_err(|e| format!("llm_query: bad JSON from Ollama: {e}"))?;
+
+    let raw = resp["response"]
+        .as_str()
+        .ok_or("llm_query: missing 'response' field in Ollama reply")?;
+
+    // Strip optional markdown code fences the model might add.
+    let clean = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let actions: Vec<serde_json::Value> = serde_json::from_str(clean)
+        .map_err(|e| format!("llm_query: could not parse action list: {e}\nModel said: {clean}"))?;
+
+    if actions.is_empty() {
+        return Ok("AI: no actions".to_string());
+    }
+
+    let mut results: Vec<String> = Vec::new();
+    for item in &actions {
+        let action = item["action"].as_str().unwrap_or("unknown");
+        // Guard against infinite recursion.
+        if action == "llm_query" {
+            results.push("skipped nested llm_query".to_string());
+            continue;
+        }
+        let raw_args = item.get("args").cloned().unwrap_or(serde_json::Value::Object(Default::default()));
+        let args: crate::protocol::Args = serde_json::from_value(raw_args)
+            .unwrap_or_default();
+        match dispatch(action, &args) {
+            Ok(msg) => results.push(msg),
+            Err(e) => results.push(format!("{action}: {e}")),
+        }
+    }
+
+    Ok(format!("AI: {}", results.join(", ")))
 }

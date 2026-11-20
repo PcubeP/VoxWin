@@ -172,6 +172,7 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
     var hint by remember { mutableStateOf("") }
     var listening by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) }
+    var llmMode by remember { mutableStateOf(prefs.getBoolean("llm_mode", false)) }
 
     var micPermission by remember {
         mutableStateOf(
@@ -231,8 +232,14 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
                     transcript = text
                     val command = CommandParser.parse(text)
                     if (command == null) {
-                        hint = "Didn't catch that — try one of the suggestions below."
-                        log("unmatched: \"$text\"")
+                        if (llmMode && client.state.value == ConnectionState.CONNECTED) {
+                            hint = ""
+                            log("AI: asking about \"$text\"")
+                            client.send(Command.of(Actions.LLM_QUERY, mapOf("query" to text)))
+                        } else {
+                            hint = "Didn't catch that — try one of the suggestions below."
+                            log("unmatched: \"$text\"")
+                        }
                     } else {
                         hint = ""
                         log("heard \"$text\" -> ${command.action}")
@@ -360,6 +367,28 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
                         log("tapped \"$phrase\" -> ${cmd.action}")
                         client.send(cmd)
                     }
+                }
+
+                // AI Mode toggle — routes unrecognized voice to Ollama on the PC
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("AI Mode", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Route unrecognized commands through Ollama (requires Ollama on PC)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = llmMode,
+                        onCheckedChange = {
+                            llmMode = it
+                            prefs.edit().putBoolean("llm_mode", it).apply()
+                        },
+                    )
                 }
 
                 ActivityLog(
