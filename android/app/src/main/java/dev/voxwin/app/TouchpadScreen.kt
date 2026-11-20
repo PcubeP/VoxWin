@@ -7,9 +7,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -68,6 +72,7 @@ fun TouchpadScreen(client: VoxwinClient, modifier: Modifier = Modifier) {
     var dragLocked by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var sensitivity by remember { mutableStateOf(prefs.getFloat("trackpad_sensitivity", 1.5f)) }
+    var scrollSensitivity by remember { mutableStateOf(prefs.getFloat("trackpad_scroll_sensitivity", 0.4f)) }
     val sheetState = rememberModalBottomSheetState()
 
     // Shared handler for long-press scheduling across gestures.
@@ -114,8 +119,8 @@ fun TouchpadScreen(client: VoxwinClient, modifier: Modifier = Modifier) {
                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     RoundedCornerShape(12.dp),
                 )
-                // sensitivity is the key so the block restarts when it changes.
-                .pointerInput(sensitivity) {
+                // sensitivity/scrollSensitivity are keys so the block restarts when they change.
+                .pointerInput(sensitivity, scrollSensitivity) {
                     awaitEachGesture {
                         var dragFired = false
                         var maxFingers = 1
@@ -163,7 +168,7 @@ fun TouchpadScreen(client: VoxwinClient, modifier: Modifier = Modifier) {
                                         }
                                     }
                                     2 -> {
-                                        val scrollY = (delta.y / 2.5f).roundToInt()
+                                        val scrollY = (delta.y * scrollSensitivity).roundToInt()
                                         if (scrollY != 0) {
                                             client.send(
                                                 Command.of(
@@ -227,36 +232,58 @@ fun TouchpadScreen(client: VoxwinClient, modifier: Modifier = Modifier) {
 
         // ── Keyboard input ───────────────────────────────────────────────────
         AnimatedVisibility(visible = showKeyboard) {
-            OutlinedTextField(
-                value = keyboardText,
-                onValueChange = { new ->
-                    val old = keyboardText
-                    when {
-                        new.length > old.length -> client.send(
-                            Command.of(
-                                Actions.TYPE_TEXT,
-                                mapOf("text" to new.substring(old.length)),
+            Column {
+                OutlinedTextField(
+                    value = keyboardText,
+                    onValueChange = { new ->
+                        val old = keyboardText
+                        when {
+                            new.length > old.length -> client.send(
+                                Command.of(
+                                    Actions.TYPE_TEXT,
+                                    mapOf("text" to new.substring(old.length)),
+                                )
                             )
-                        )
-                        new.length < old.length -> repeat(old.length - new.length) {
-                            client.send(Command.of(Actions.KEY, mapOf("combo" to "backspace")))
+                            new.length < old.length -> repeat(old.length - new.length) {
+                                client.send(Command.of(Actions.KEY, mapOf("combo" to "backspace")))
+                            }
+                        }
+                        keyboardText = new
+                    },
+                    label = { Text("Type to send to PC") },
+                    singleLine = false,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            client.send(Command.of(Actions.KEY, mapOf("combo" to "enter")))
+                            keyboardText = ""
+                        },
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+                // Quick-key shortcuts row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 8.dp, end = 8.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    for ((label, combo) in QUICK_KEYS) {
+                        OutlinedButton(
+                            onClick = {
+                                client.send(Command.of(Actions.KEY, mapOf("combo" to combo)))
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                            modifier = Modifier.height(32.dp),
+                        ) {
+                            Text(label, style = MaterialTheme.typography.labelSmall)
                         }
                     }
-                    keyboardText = new
-                },
-                label = { Text("Type to send to PC") },
-                singleLine = false,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(
-                    onSend = {
-                        client.send(Command.of(Actions.KEY, mapOf("combo" to "enter")))
-                        keyboardText = ""
-                    },
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+                }
+            }
         }
 
         // ── Button bar ───────────────────────────────────────────────────────
@@ -329,8 +356,35 @@ fun TouchpadScreen(client: VoxwinClient, modifier: Modifier = Modifier) {
                     steps = 6,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Text(
+                    "Scroll speed: ${"%.2f".format(scrollSensitivity)}×",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Slider(
+                    value = scrollSensitivity,
+                    onValueChange = {
+                        scrollSensitivity = it
+                        prefs.edit().putFloat("trackpad_scroll_sensitivity", it).apply()
+                    },
+                    valueRange = 0.05f..1.0f,
+                    steps = 7,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Spacer(Modifier.height(32.dp))
             }
         }
     }
 }
+
+private val QUICK_KEYS = listOf(
+    "Ctrl+C" to "ctrl+c",
+    "Ctrl+V" to "ctrl+v",
+    "Ctrl+Z" to "ctrl+z",
+    "Ctrl+A" to "ctrl+a",
+    "Ctrl+X" to "ctrl+x",
+    "Ctrl+S" to "ctrl+s",
+    "Tab"    to "tab",
+    "Esc"    to "esc",
+    "Win"    to "win",
+    "Del"    to "delete",
+)
