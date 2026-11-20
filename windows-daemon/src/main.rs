@@ -78,6 +78,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("──────────────────────────────────────────────");
 
+    // ── Feature 4: JPEG screen-capture stream on port+1 ──────────────────────
+    let stream_port: u16 = env::var("VOXWIN_STREAM_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(port + 1);
+    match TcpListener::bind(format!("0.0.0.0:{stream_port}")).await {
+        Ok(sl) => {
+            println!("  Stream    : ws://{}:{stream_port}  (remote desktop, JPEG 10fps)", lan_ip);
+            tokio::spawn(async move {
+                loop {
+                    match sl.accept().await {
+                        Ok((stream, peer)) => {
+                            tokio::spawn(async move {
+                                if let Err(e) = handle_stream_ws(stream, peer).await {
+                                    eprintln!("[stream:{peer}] ended: {e}");
+                                }
+                            });
+                        }
+                        Err(e) => eprintln!("stream accept: {e}"),
+                    }
+                }
+            });
+        }
+        Err(e) => eprintln!("stream port {stream_port} unavailable: {e}"),
+    }
+
     loop {
         match listener.accept().await {
             Ok((stream, peer)) => {
@@ -190,5 +216,67 @@ where
 {
     let text = serde_json::to_string(msg)?;
     ws.send(Message::Text(text)).await?;
+    Ok(())
+}
+
+/// Feature 4: stream JPEG screen captures over a WebSocket.
+///
+/// First frame sent: a JSON text message `{"type":"stream_info","width":W,"height":H}`.
+/// Subsequent frames: binary WebSocket frames containing a full JPEG image (50% scale).
+/// Streams at ~10fps until the client disconnects.
+async fn handle_stream_ws(
+    stream: tokio::net::TcpStream,
+    peer: std::net::SocketAddr,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut ws = accept_async(stream).await?;
+    eprintln!("[stream:{peer}] connected");
+
+    // Probe the screen resolution from an initial capture.
+    let (screen_w, screen_h) = tokio::task::spawn_blocking(|| -> (u32, u32) {
+        screenshots::Screen::all()
+            .ok()
+            .and_then(|s| s.into_iter().next())
+            .and_then(|screen| screen.capture().ok())
+            .map(|img| (img.width(), img.height()))
+            .unwrap_or((1920, 1080))
+    })
+    .await?;
+
+    // Tell the client the original (pre-scale) resolution so it can map touch → abs coords.
+    let info = serde_json::json!({
+        "type": "stream_info",
+        "width":  screen_w,
+        "height": screen_h,
+    });
+    ws.send(Message::Text(serde_json::to_string(&info)?)).await?;
+
+    // Capture loop — 10fps.
+    loop {
+        let jpeg_opt = tokio::task::spawn_blocking(|| -> Option<Vec<u8>> {
+            use image::{DynamicImage, ImageFormat};
+
+            let screen = screenshots::Screen::all().ok()?.into_iter().next()?;
+            let rgba = screen.capture().ok()?;
+            let (w, h) = (rgba.width(), rgba.height());
+            let scaled = DynamicImage::ImageRgba8(rgba)
+                .resize(w / 2, h / 2, image::imageops::FilterType::Nearest);
+            let mut buf = Vec::new();
+            scaled
+                .write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Jpeg)
+                .ok()?;
+            Some(buf)
+        })
+        .await?;
+
+        if let Some(jpeg) = jpeg_opt {
+            if ws.send(Message::Binary(jpeg)).await.is_err() {
+                break; // client disconnected
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    eprintln!("[stream:{peer}] disconnected");
     Ok(())
 }

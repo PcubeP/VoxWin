@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Mouse
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AssistChip
@@ -318,6 +319,12 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
                     icon = { Icon(Icons.Filled.SportsEsports, contentDescription = null) },
                     label = { Text("Gamepad") },
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    icon = { Icon(Icons.Filled.DesktopWindows, contentDescription = null) },
+                    label = { Text("Desktop") },
+                )
             }
         },
     ) { inner ->
@@ -328,6 +335,12 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
             )
             2 -> GamepadScreen(
                 client = client,
+                modifier = Modifier.padding(inner),
+            )
+            3 -> DesktopScreen(
+                client = client,
+                host = host,
+                controlPort = port.toIntOrNull() ?: 8787,
                 modifier = Modifier.padding(inner),
             )
             else -> Column(

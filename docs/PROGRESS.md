@@ -59,13 +59,6 @@ and tested authoritatively by CI on a hosted Windows runner.
 - [x] **Infinite-recursion guard**: the `llm_query` handler skips any
       `llm_query` action the model might return
 
-## Verified locally on 2026-11-20
-
-- [x] `./gradlew assembleDebug` → BUILD SUCCESSFUL (all touchpad improvements)
-- [x] Feature 2 Android changes: BUILD SUCCESSFUL (see below)
-- [x] Rust toolchain 1.99.1; `cargo check` blocked on this machine by Defender
-      (unsigned build scripts); verified clean by CI
-
 ## Known environment constraint (not a code issue)
 
 This build machine runs tamper-protected Microsoft Defender real-time
@@ -77,6 +70,53 @@ can't execute) and the daemon exe can't be launched here. This is why the Rust
 side is verified by CI on a clean Windows runner instead. AppLocker is only in
 AuditOnly mode, so it is not the cause.
 
+### Feature 3 — Remote Gamepad (complete, 2026-11-20)
+
+- [x] **`gamepad_state` daemon action**: creates a virtual Xbox 360 controller
+      via ViGEmBus driver on first call; updates all axes + buttons per frame;
+      `Mutex<Option<GamepadSession>>` with `unsafe impl Send` for the ViGEmBus
+      HANDLE wrapper; lazy init — returns a clear error if ViGEmBus not installed
+- [x] **Env-var override**: `VOXWIN_VIGEM_*` — no, standard Cargo.toml target dep
+- [x] **GamepadScreen composable**: portrait-fit layout with:
+      - LT / RT sliders at the top
+      - LB / RB + SEL / START shoulder row
+      - Left thumbstick (drag circle, springs to center on release)
+      - D-pad (4 directional buttons in a cross layout)
+      - ABXY face buttons (diamond layout)
+      - Right thumbstick below main row
+      - L3 / R3 (thumbstick click buttons)
+- [x] **Bitmask protocol**: `GamepadButtons` object in `Models.kt` with all
+      XUSB_GAMEPAD_* constants; `buttons: Int` field sent as i32 on the wire
+- [x] Gamepad tab added to NavigationBar (SportsEsports icon)
+- [x] gamepad_state events suppressed in activity log (same as mouse_move)
+
+### Feature 4 — Remote Desktop (complete, 2026-11-20)
+
+- [x] **Stream server on port+1**: second `TcpListener` spawned in `main()`;
+      `handle_stream_ws()` sends one JPEG frame every 100ms (10fps) using
+      `screenshots` crate for screen capture and `image` crate for 50%-scale JPEG
+      encoding; binary WebSocket frames; first text frame is a
+      `{type:"stream_info", width, height}` JSON with the original PC resolution
+- [x] **Env-var override**: `VOXWIN_STREAM_PORT` (default: control port + 1)
+- [x] **StreamClient.kt**: second OkHttp `WebSocket` connection on port+1;
+      exposes `state: StateFlow<ConnectionState>`, `frame: StateFlow<ByteArray?>`,
+      `screenWidth`, `screenHeight` from the stream_info frame
+- [x] **DesktopScreen composable**: `DisposableEffect` wires up / tears down
+      `StreamClient` on connect/disconnect; JPEG bytes decoded to `ImageBitmap`
+      via `BitmapFactory`; `ContentScale.FillBounds` to fill the phone screen;
+      touch coordinates mapped via `touchX / compWidth * screenWidth` for
+      `mouse_move_abs`; tap → `mouse_move_abs + mouse_click`; loading/error states
+- [x] Desktop tab (DesktopWindows icon) added to NavigationBar
+
+## Verified locally on 2026-11-20
+
+- [x] `./gradlew assembleDebug` → BUILD SUCCESSFUL (all touchpad improvements)
+- [x] Feature 2 Android changes: BUILD SUCCESSFUL
+- [x] Feature 3 Android changes: BUILD SUCCESSFUL (pre-existing warnings only)
+- [x] Feature 3+4 combined Android build: BUILD SUCCESSFUL
+- [x] Rust toolchain 1.99.1; `cargo check` blocked on this machine by Defender
+      (unsigned build scripts); verified clean by CI
+
 ## Remaining before a tagged release
 
 - [ ] Confirm the daemon runs end-to-end on an unmanaged Windows box (every
@@ -86,10 +126,8 @@ AuditOnly mode, so it is not the cause.
 
 ## Roadmap (nice-to-have)
 
-- [ ] Feature 3: Remote gamepad + gyro via ViGEmBus + vigem-client Rust crate;
-      new GamepadScreen composable
-- [ ] Feature 4: Remote desktop (DXGI Desktop Duplication + H.264 encoding);
-      uses `mouse_move_abs` from Feature 1
+- [ ] Upgrade remote desktop to DXGI Desktop Duplication + H.264 encoding for
+      lower latency and better quality (current: screenshots crate + JPEG 10fps)
 - [ ] Harden auth beyond a single shared token (per-device keys, rotation)
 - [ ] User-editable launch-alias config file
 - [ ] Continuous-listen / wake-word mode
