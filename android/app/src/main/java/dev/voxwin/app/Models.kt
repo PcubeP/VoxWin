@@ -39,6 +39,26 @@ object Actions {
     const val MOUSE_SCROLL   = "mouse_scroll"
     // AI / LLM
     const val LLM_QUERY = "llm_query"
+    // Gamepad (Feature 3)
+    const val GAMEPAD_STATE = "gamepad_state"
+}
+
+/** XInput gamepad button bitmask flags (XUSB_GAMEPAD_* constants). */
+object GamepadButtons {
+    const val DPAD_UP      = 0x0001
+    const val DPAD_DOWN    = 0x0002
+    const val DPAD_LEFT    = 0x0004
+    const val DPAD_RIGHT   = 0x0008
+    const val START        = 0x0010
+    const val BACK         = 0x0020
+    const val LEFT_THUMB   = 0x0040
+    const val RIGHT_THUMB  = 0x0080
+    const val LB           = 0x0100
+    const val RB           = 0x0200
+    const val A            = 0x1000
+    const val B            = 0x2000
+    const val X            = 0x4000
+    const val Y            = 0x8000
 }
 
 /**

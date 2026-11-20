@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Mouse
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -192,8 +193,9 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
     val logLines = remember { mutableStateListOf<LogLine>() }
     val timeFmt = remember { SimpleDateFormat("HH:mm:ss", Locale.US) }
     fun log(line: String) {
-        // Suppress high-frequency mouse-move events so the voice log stays readable.
+        // Suppress high-frequency mouse-move and gamepad events so the voice log stays readable.
         if (line.startsWith("->") && "\"mouse_move" in line) return
+        if (line.startsWith("->") && "\"gamepad_state" in line) return
         logLines.add(LogLine(timeFmt.format(Date()), line, classify(line)))
         if (logLines.size > 200) logLines.removeAt(0)
     }
@@ -310,11 +312,21 @@ private fun VoxwinApp(client: VoxwinClient, activity: MainActivity) {
                     icon = { Icon(Icons.Filled.Mouse, contentDescription = null) },
                     label = { Text("Touchpad") },
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Filled.SportsEsports, contentDescription = null) },
+                    label = { Text("Gamepad") },
+                )
             }
         },
     ) { inner ->
         when (selectedTab) {
             1 -> TouchpadScreen(
+                client = client,
+                modifier = Modifier.padding(inner),
+            )
+            2 -> GamepadScreen(
                 client = client,
                 modifier = Modifier.padding(inner),
             )

@@ -48,6 +48,21 @@ pub struct Args {
     pub button: Option<String>,
     /// llm_query: natural-language query to send to Ollama.
     pub query: Option<String>,
+    // ── Gamepad (gamepad_state) ──────────────────────────────────────────────
+    /// Left stick X: -32767..+32767 (sent as i32, clamped to i16 on daemon side).
+    pub lx: Option<i32>,
+    /// Left stick Y: -32767..+32767.
+    pub ly: Option<i32>,
+    /// Right stick X: -32767..+32767.
+    pub rx: Option<i32>,
+    /// Right stick Y: -32767..+32767.
+    pub ry: Option<i32>,
+    /// Left trigger: 0..255.
+    pub lt: Option<i32>,
+    /// Right trigger: 0..255.
+    pub rt: Option<i32>,
+    /// XInput button bitmask (XUSB_GAMEPAD_* flags, see GamepadButtons in Models.kt).
+    pub buttons: Option<i32>,
 }
 
 /// A frame the daemon sends back to the Android app.

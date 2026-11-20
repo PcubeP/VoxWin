@@ -96,6 +96,22 @@ pub fn dispatch(action: &str, args: &Args) -> Result<String, String> {
             llm_query(query)
         }
 
+        "gamepad_state" => {
+            #[cfg(windows)]
+            {
+                let lx = args.lx.unwrap_or(0).clamp(-32767, 32767) as i16;
+                let ly = args.ly.unwrap_or(0).clamp(-32767, 32767) as i16;
+                let rx = args.rx.unwrap_or(0).clamp(-32767, 32767) as i16;
+                let ry = args.ry.unwrap_or(0).clamp(-32767, 32767) as i16;
+                let lt = args.lt.unwrap_or(0).clamp(0, 255) as u8;
+                let rt = args.rt.unwrap_or(0).clamp(0, 255) as u8;
+                let btns = args.buttons.unwrap_or(0) as u16;
+                gamepad_state(lx, ly, rx, ry, lt, rt, btns)
+            }
+            #[cfg(not(windows))]
+            Err("gamepad_state: Windows only".into())
+        }
+
         other => Err(format!("unknown action '{other}'")),
     }
 }
@@ -349,4 +365,47 @@ fn llm_query(query: &str) -> Result<String, String> {
     }
 
     Ok(format!("AI: {}", results.join(", ")))
+}
+
+// ── Feature 3: virtual Xbox 360 gamepad via ViGEmBus ─────────────────────────
+
+#[cfg(windows)]
+struct GamepadSession(vigem_client::Xbox360Wired<vigem_client::Client>);
+
+// SAFETY: Xbox360Wired wraps a Windows HANDLE to the ViGEmBus device.
+// The driver serialises concurrent IOCTLs, and we additionally gate all
+// mutations through the Mutex, so sending the wrapper to another thread is safe.
+#[cfg(windows)]
+unsafe impl Send for GamepadSession {}
+
+#[cfg(windows)]
+static GAMEPAD: std::sync::LazyLock<std::sync::Mutex<Option<GamepadSession>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+#[cfg(windows)]
+fn gamepad_state(lx: i16, ly: i16, rx: i16, ry: i16, lt: u8, rt: u8, buttons: u16) -> Result<String, String> {
+    use vigem_client::{Client, TargetId, Xbox360Wired, XButtons, XGamepad};
+
+    let mut guard = GAMEPAD.lock().unwrap();
+    if guard.is_none() {
+        let client = Client::connect()
+            .map_err(|e| format!("ViGEmBus not installed (install ViGEmBus driver): {e}"))?;
+        let id = TargetId::xbox360_wired();
+        let mut target = Xbox360Wired::new(client, id);
+        target.plugin().map_err(|e| format!("gamepad plugin: {e}"))?;
+        target.wait_ready().map_err(|e| format!("gamepad wait_ready: {e}"))?;
+        *guard = Some(GamepadSession(target));
+    }
+    let session = guard.as_mut().unwrap();
+    let gamepad = XGamepad {
+        buttons: XButtons { raw: buttons },
+        left_trigger: lt,
+        right_trigger: rt,
+        thumb_lx: lx,
+        thumb_ly: ly,
+        thumb_rx: rx,
+        thumb_ry: ry,
+    };
+    session.0.update(&gamepad).map_err(|e| format!("gamepad update: {e}"))?;
+    Ok("gamepad updated".into())
 }

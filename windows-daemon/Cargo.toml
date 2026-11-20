@@ -23,6 +23,10 @@ local-ip-address = "0.6"
 # Blocking HTTP client for Ollama LLM calls (no async needed, runs in spawn_blocking)
 ureq = { version = "2", features = ["json"] }
 
+# Screen capture + JPEG encoding for Feature 4 (remote desktop stream)
+screenshots = "0.8"
+image = "0.24"
+
 # TLS (wss://) — self-signed cert generated at startup
 tokio-rustls = "0.26"
 rustls = "0.23"
@@ -35,6 +39,8 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
 ] }
+# Virtual Xbox 360 gamepad via ViGEmBus driver (Feature 3)
+vigem-client = "0.1"
 
 [profile.release]
 opt-level = "z"
