@@ -15,6 +15,7 @@ captures/
 *.dex
 *.keystore
 *.jks
+*.jks.b64
 
 # ---- IDE / editors ----
 .idea/

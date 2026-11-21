@@ -27,6 +27,10 @@ and tested authoritatively by CI on a hosted Windows runner.
 - [x] **GitHub Actions CI** ([../.github/workflows/ci.yml](../.github/workflows/ci.yml)):
       Rust build/test/fmt on `windows-latest`; Android test + APK on
       `ubuntu-latest`; both upload artifacts
+- [x] **Downloadable releases** ([../.github/workflows/release.yml](../.github/workflows/release.yml)):
+      pushing a `v*` tag publishes a GitHub Release with a release-signed
+      `voxwin.apk` (phone) and `voxwin-daemon.exe` (PC) attached as downloads.
+      One-time keystore + secrets setup in [RELEASING.md](RELEASING.md)
 
 ### Feature 1 — Remote Touchpad + Keyboard (complete, 2026-11-20)
 

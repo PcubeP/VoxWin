@@ -18,6 +18,28 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release signing is driven by environment variables (set by the Release CI
+    // workflow from repo secrets) with a fallback to Gradle properties for local
+    // signed builds. See docs/RELEASING.md. When no keystore is configured the
+    // config stays empty and the release build simply isn't signed here — debug
+    // builds are unaffected.
+    val keystorePath = System.getenv("VOXWIN_KEYSTORE_FILE")
+        ?: (project.findProperty("voxwin.keystore.file") as String?)
+
+    signingConfigs {
+        create("release") {
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("VOXWIN_KEYSTORE_PASSWORD")
+                    ?: (project.findProperty("voxwin.keystore.password") as String?)
+                keyAlias = System.getenv("VOXWIN_KEY_ALIAS")
+                    ?: (project.findProperty("voxwin.key.alias") as String?)
+                keyPassword = System.getenv("VOXWIN_KEY_PASSWORD")
+                    ?: (project.findProperty("voxwin.key.password") as String?)
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -25,6 +47,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Only attach the signing config when a keystore is actually present,
+            // so local debug-only checkouts (no keystore) still configure cleanly.
+            if (keystorePath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
