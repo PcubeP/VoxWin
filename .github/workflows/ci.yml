@@ -38,6 +38,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy (non-blocking)
+        continue-on-error: true
         run: cargo clippy --release --all-targets
 
       - name: Build (release)
