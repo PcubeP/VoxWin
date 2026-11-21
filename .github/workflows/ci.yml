@@ -42,18 +42,7 @@ jobs:
         run: cargo clippy --release --all-targets
 
       - name: Build (release)
-        shell: bash
-        env:
-          CARGO_TERM_COLOR: never
-        run: |
-          set +e
-          cargo build --release 2>&1 | tee build_out.txt
-          code=${PIPESTATUS[0]}
-          if [ "$code" -ne 0 ]; then
-            msg=$(grep -aE "error(\[|:)" build_out.txt | head -30 | sed ':a;N;$!ba;s/\n/%0A/g')
-            echo "::error::rustc build failed:%0A${msg:-<no error lines matched; see tail>%0A$(tail -40 build_out.txt | sed ':a;N;$!ba;s/\n/%0A/g')}"
-          fi
-          exit "$code"
+        run: cargo build --release
 
       - name: Test
         run: cargo test --release
