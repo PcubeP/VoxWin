@@ -12,18 +12,17 @@ use std::{
     mem,
     net::TcpStream,
     os::windows::io::FromRawSocket,
-    ptr,
     sync::Arc,
 };
 
 use windows::{
-    core::{GUID, PCWSTR, PWSTR},
+    core::{GUID, PWSTR},
     Win32::{
-        Devices::Bluetooth::{BTHPROTO_RFCOMM, BT_PORT_ANY, SOCKADDR_BTH},
+        Devices::Bluetooth::{BTHPROTO_RFCOMM, SOCKADDR_BTH},
         Networking::WinSock::{
             accept, bind, closesocket, getsockname, listen, socket, WSACleanup, WSASetServiceW,
-            WSAStartup, CSADDR_INFO, INVALID_SOCKET, NS_BTH, RNRSERVICE_REGISTER, SOCKADDR,
-            SOCKET_ADDRESS, SOCKET_ERROR, SOCK_STREAM, WSADATA, WSAQUERYSETW,
+            WSAStartup, CSADDR_INFO, RNRSERVICE_REGISTER, SOCKADDR, SOCKET_ADDRESS, SOCKET_ERROR,
+            SOCK_STREAM, WSADATA, WSAQUERYSETW,
         },
     },
 };
@@ -35,6 +34,14 @@ use crate::{
 
 // AF_BTH = 32 (bthdef.h); not re-exported by name in the windows crate's WinSock module.
 const AF_BTH: i32 = 32;
+
+// ws2bth.h: `BT_PORT_ANY = (ULONG)-1` — bind to any free RFCOMM channel.
+// Not generated as a constant by the windows crate, so we define it locally.
+const BT_PORT_ANY: u32 = 0xFFFF_FFFF;
+
+// ws2bth.h: `NS_BTH = 16` — the Bluetooth namespace for WSASetService.
+// Not generated as a constant by the windows crate, so we define it locally.
+const NS_BTH: u32 = 16;
 
 // Standard Serial Port Profile UUID — Android's createRfcommSocketToServiceRecord looks for this.
 const SPP_UUID: GUID = GUID {
@@ -63,11 +70,13 @@ fn run_inner(
         }
 
         // ── Create RFCOMM socket ─────────────────────────────────────────────
-        let srv = socket(AF_BTH, SOCK_STREAM.0 as i32, BTHPROTO_RFCOMM as i32);
-        if srv == INVALID_SOCKET {
-            WSACleanup();
-            return Err("socket() failed — is Bluetooth enabled?".into());
-        }
+        let srv = match socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM as i32) {
+            Ok(s) => s,
+            Err(_) => {
+                WSACleanup();
+                return Err("socket() failed — is Bluetooth enabled?".into());
+            }
+        };
 
         // ── Bind to any local adapter / any free channel ─────────────────────
         let mut local: SOCKADDR_BTH = mem::zeroed();
@@ -108,11 +117,13 @@ fn run_inner(
 
         // ── Accept loop ──────────────────────────────────────────────────────
         loop {
-            let conn = accept(srv, ptr::null_mut(), ptr::null_mut());
-            if conn == INVALID_SOCKET {
-                log("[bt] accept() failed, Bluetooth server shutting down".into());
-                break;
-            }
+            let conn = match accept(srv, None, None) {
+                Ok(c) => c,
+                Err(_) => {
+                    log("[bt] accept() failed, Bluetooth server shutting down".into());
+                    break;
+                }
+            };
             let tok = token.clone();
             let log2 = Arc::clone(&log);
             std::thread::spawn(move || handle_conn(conn, tok, log2));

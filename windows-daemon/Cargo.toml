@@ -38,6 +38,7 @@ windows = { version = "0.58", features = [
     "Win32_Devices_Bluetooth",
     "Win32_Foundation",
     "Win32_Networking_WinSock",
+    "Win32_System_Com",
 ] }
 # Virtual Xbox 360 gamepad via ViGEmBus driver (Feature 3)
 vigem-client = "0.1"
