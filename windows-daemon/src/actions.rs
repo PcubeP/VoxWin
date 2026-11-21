@@ -79,13 +79,13 @@ pub fn dispatch(action: &str, args: &Args) -> Result<String, String> {
             let y = args.y.ok_or("mouse_move_abs: missing 'y'")?;
             mouse_move(x, y, Coordinate::Abs)
         }
-        "mouse_click"  => mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Click),
+        "mouse_click" => mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Click),
         "mouse_double" => {
             mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Click)?;
             mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Click)
         }
         "mouse_down" => mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Press),
-        "mouse_up"   => mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Release),
+        "mouse_up" => mouse_btn(args.button.as_deref().unwrap_or("left"), Direction::Release),
         "mouse_scroll" => mouse_scroll_xy(args.x.unwrap_or(0), args.y.unwrap_or(0)),
 
         "llm_query" => {
@@ -271,9 +271,9 @@ fn mouse_move(x: i32, y: i32, coord: Coordinate) -> Result<String, String> {
 
 fn mouse_btn(btn: &str, dir: Direction) -> Result<String, String> {
     let button = match btn {
-        "right"  => Button::Right,
+        "right" => Button::Right,
         "middle" => Button::Middle,
-        _        => Button::Left,
+        _ => Button::Left,
     };
     let mut e = enigo()?;
     e.button(button, dir)
@@ -311,8 +311,7 @@ Example: [{\"action\":\"launch\",\"args\":{\"app\":\"notepad\"}},{\"action\":\"t
 fn llm_query(query: &str) -> Result<String, String> {
     let url = std::env::var("VOXWIN_OLLAMA_URL")
         .unwrap_or_else(|_| "http://localhost:11434/api/generate".to_string());
-    let model = std::env::var("VOXWIN_OLLAMA_MODEL")
-        .unwrap_or_else(|_| "llama3.2".to_string());
+    let model = std::env::var("VOXWIN_OLLAMA_MODEL").unwrap_or_else(|_| "llama3.2".to_string());
 
     let body = serde_json::json!({
         "model": model,
@@ -355,9 +354,11 @@ fn llm_query(query: &str) -> Result<String, String> {
             results.push("skipped nested llm_query".to_string());
             continue;
         }
-        let raw_args = item.get("args").cloned().unwrap_or(serde_json::Value::Object(Default::default()));
-        let args: crate::protocol::Args = serde_json::from_value(raw_args)
-            .unwrap_or_default();
+        let raw_args = item
+            .get("args")
+            .cloned()
+            .unwrap_or(serde_json::Value::Object(Default::default()));
+        let args: crate::protocol::Args = serde_json::from_value(raw_args).unwrap_or_default();
         match dispatch(action, &args) {
             Ok(msg) => results.push(msg),
             Err(e) => results.push(format!("{action}: {e}")),
@@ -383,8 +384,16 @@ static GAMEPAD: std::sync::LazyLock<std::sync::Mutex<Option<GamepadSession>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
 
 #[cfg(windows)]
-fn gamepad_state(lx: i16, ly: i16, rx: i16, ry: i16, lt: u8, rt: u8, buttons: u16) -> Result<String, String> {
-    use vigem_client::{Client, TargetId, Xbox360Wired, XButtons, XGamepad};
+fn gamepad_state(
+    lx: i16,
+    ly: i16,
+    rx: i16,
+    ry: i16,
+    lt: u8,
+    rt: u8,
+    buttons: u16,
+) -> Result<String, String> {
+    use vigem_client::{Client, TargetId, XButtons, XGamepad, Xbox360Wired};
 
     let mut guard = GAMEPAD.lock().unwrap();
     if guard.is_none() {
@@ -392,8 +401,12 @@ fn gamepad_state(lx: i16, ly: i16, rx: i16, ry: i16, lt: u8, rt: u8, buttons: u1
             .map_err(|e| format!("ViGEmBus not installed (install ViGEmBus driver): {e}"))?;
         let id = TargetId::xbox360_wired();
         let mut target = Xbox360Wired::new(client, id);
-        target.plugin().map_err(|e| format!("gamepad plugin: {e}"))?;
-        target.wait_ready().map_err(|e| format!("gamepad wait_ready: {e}"))?;
+        target
+            .plugin()
+            .map_err(|e| format!("gamepad plugin: {e}"))?;
+        target
+            .wait_ready()
+            .map_err(|e| format!("gamepad wait_ready: {e}"))?;
         *guard = Some(GamepadSession(target));
     }
     let session = guard.as_mut().unwrap();
@@ -406,6 +419,9 @@ fn gamepad_state(lx: i16, ly: i16, rx: i16, ry: i16, lt: u8, rt: u8, buttons: u1
         thumb_rx: rx,
         thumb_ry: ry,
     };
-    session.0.update(&gamepad).map_err(|e| format!("gamepad update: {e}"))?;
+    session
+        .0
+        .update(&gamepad)
+        .map_err(|e| format!("gamepad update: {e}"))?;
     Ok("gamepad updated".into())
 }

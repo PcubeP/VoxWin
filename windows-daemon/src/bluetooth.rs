@@ -23,7 +23,7 @@ use windows::{
         Networking::WinSock::{
             accept, bind, closesocket, getsockname, listen, socket, WSACleanup, WSASetServiceW,
             WSAStartup, CSADDR_INFO, INVALID_SOCKET, NS_BTH, RNRSERVICE_REGISTER, SOCKADDR,
-            SOCK_STREAM, SOCKET_ADDRESS, SOCKET_ERROR, WSADATA, WSAQUERYSETW,
+            SOCKET_ADDRESS, SOCKET_ERROR, SOCK_STREAM, WSADATA, WSAQUERYSETW,
         },
     },
 };
@@ -87,11 +87,7 @@ fn run_inner(
         // ── Read the assigned channel ────────────────────────────────────────
         let mut bound: SOCKADDR_BTH = mem::zeroed();
         let mut bound_len = mem::size_of::<SOCKADDR_BTH>() as i32;
-        getsockname(
-            srv,
-            &mut bound as *mut _ as *mut SOCKADDR,
-            &mut bound_len,
-        );
+        getsockname(srv, &mut bound as *mut _ as *mut SOCKADDR, &mut bound_len);
         let channel = bound.port;
 
         // ── Register SDP record (best-effort) ────────────────────────────────
@@ -198,7 +194,9 @@ fn handle_conn(
         let cmd: Command = match serde_json::from_str(&line) {
             Ok(c) => c,
             Err(e) => {
-                let reply = serde_json::to_string(&Server::error("unknown", format!("invalid json: {e}"))).unwrap_or_default();
+                let reply =
+                    serde_json::to_string(&Server::error("unknown", format!("invalid json: {e}")))
+                        .unwrap_or_default();
                 let _ = writeln!(out, "{reply}");
                 let _ = out.flush();
                 continue;
@@ -206,7 +204,8 @@ fn handle_conn(
         };
 
         if cmd.token != token {
-            let reply = serde_json::to_string(&Server::error(&cmd.action, "unauthorized")).unwrap_or_default();
+            let reply = serde_json::to_string(&Server::error(&cmd.action, "unauthorized"))
+                .unwrap_or_default();
             let _ = writeln!(out, "{reply}");
             let _ = out.flush();
             break;

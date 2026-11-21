@@ -21,9 +21,8 @@ pub fn make_acceptor() -> (TlsAcceptor, String) {
 
     let pem = certified.cert.pem();
     let cert_der = CertificateDer::from(certified.cert.der().as_ref().to_vec());
-    let key_der = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
-        certified.key_pair.serialize_der(),
-    ));
+    let key_der =
+        PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(certified.key_pair.serialize_der()));
 
     let config = ServerConfig::builder()
         .with_no_client_auth()

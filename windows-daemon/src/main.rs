@@ -19,7 +19,10 @@ mod bluetooth;
 use std::{env, net::SocketAddr, sync::Arc};
 
 use futures_util::{SinkExt, StreamExt};
-use tokio::{io::{AsyncRead, AsyncWrite}, net::{TcpListener, TcpStream}};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::{TcpListener, TcpStream},
+};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 use protocol::{Command, Server};
@@ -85,7 +88,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(port + 1);
     match TcpListener::bind(format!("0.0.0.0:{stream_port}")).await {
         Ok(sl) => {
-            println!("  Stream    : ws://{}:{stream_port}  (remote desktop, JPEG 10fps)", lan_ip);
+            println!(
+                "  Stream    : ws://{}:{stream_port}  (remote desktop, JPEG 10fps)",
+                lan_ip
+            );
             tokio::spawn(async move {
                 loop {
                     match sl.accept().await {
@@ -166,8 +172,11 @@ where
                     Ok(c) => c,
                     Err(e) => {
                         eprintln!("[{peer}] bad frame: {e}");
-                        ws_send(&mut ws, &Server::error("unknown", format!("invalid json: {e}")))
-                            .await?;
+                        ws_send(
+                            &mut ws,
+                            &Server::error("unknown", format!("invalid json: {e}")),
+                        )
+                        .await?;
                         continue;
                     }
                 };
@@ -248,7 +257,8 @@ async fn handle_stream_ws(
         "width":  screen_w,
         "height": screen_h,
     });
-    ws.send(Message::Text(serde_json::to_string(&info)?)).await?;
+    ws.send(Message::Text(serde_json::to_string(&info)?))
+        .await?;
 
     // Capture loop — 10fps.
     loop {
@@ -258,8 +268,11 @@ async fn handle_stream_ws(
             let screen = screenshots::Screen::all().ok()?.into_iter().next()?;
             let rgba = screen.capture().ok()?;
             let (w, h) = (rgba.width(), rgba.height());
-            let scaled = DynamicImage::ImageRgba8(rgba)
-                .resize(w / 2, h / 2, image::imageops::FilterType::Nearest);
+            let scaled = DynamicImage::ImageRgba8(rgba).resize(
+                w / 2,
+                h / 2,
+                image::imageops::FilterType::Nearest,
+            );
             let mut buf = Vec::new();
             scaled
                 .write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Jpeg)
