@@ -399,7 +399,7 @@ fn gamepad_state(
     if guard.is_none() {
         let client = Client::connect()
             .map_err(|e| format!("ViGEmBus not installed (install ViGEmBus driver): {e}"))?;
-        let id = TargetId::xbox360_wired();
+        let id = TargetId::XBOX360_WIRED;
         let mut target = Xbox360Wired::new(client, id);
         target
             .plugin()
